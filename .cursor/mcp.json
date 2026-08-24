@@ -10,7 +10,7 @@
         "aseprite_mcp"
       ],
       "env": {
-        "ASEPRITE_PATH": "/Users/alejo/Documents/Personal/DragoraGames/aseprite/build/bin/Aseprite.app/Contents/MacOS/aseprite"
+        "ASEPRITE_PATH": "PATH/ASEPRITE"
       }
     }
   }
