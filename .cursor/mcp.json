@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "aseprite": {
+      "command": "/Users/alejo/.local/bin/uv",
+      "args": [
+        "--directory",
+        "/Users/alejo/Desktop/aseprite-mcp",
+        "run",
+        "-m",
+        "aseprite_mcp"
+      ],
+      "env": {
+        "ASEPRITE_PATH": "/Users/alejo/Documents/Personal/DragoraGames/aseprite/build/bin/Aseprite.app/Contents/MacOS/aseprite"
+      }
+    }
+  }
+}
