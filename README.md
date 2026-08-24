@@ -1,8 +1,13 @@
 # Aseprite MCP Tools
 
+> **This is a fork** of [diivi/aseprite-mcp](https://github.com/diivi/aseprite-mcp) by Divyansh Singh, maintained by
+> Alejandro Castellanos. It adds the [Pixel Art Skills](#pixel-art-skills)
+> library — ten craft documents served to any MCP client — plus the MCP resources, prompt and server
+> instructions that deliver them. Original work MIT-licensed; see [LICENSE](LICENSE).
+
 A Python MCP server that gives AI assistants full control over [Aseprite](https://www.aseprite.org/) for creating pixel art and animated sprites.
 
-**104 tools across 17 categories** — canvas, drawing, layers, animation, palettes, effects, slices, tilemaps, exports, visual-feedback/analysis tools, and a raw Lua escape hatch. The tool set is designed so an LLM has everything it needs to produce *good* pixel art, not just primitives: shading ramps with hue shifting, ordered dithering, outlines, retro palette presets with quantization, onion-skin renders, and frame diffing for animation work.
+**118 tools across 19 categories** — canvas, drawing, layers, animation, palettes, effects, slices, tilemaps, exports, visual-feedback/analysis tools, and a raw Lua escape hatch. The tool set is designed so an LLM has everything it needs to produce *good* pixel art, not just primitives: shading ramps with hue shifting, ordered dithering, outlines, retro palette presets with quantization, onion-skin renders, and frame diffing for animation work. It also ships a **pixel-art skill library** the model reads before it draws, so the craft rules travel with the tools.
 
 ## Example: a swordsman, drawn and animated by Claude
 
@@ -24,6 +29,120 @@ A Python MCP server that gives AI assistants full control over [Aseprite](https:
 </table>
 
 Both were created end-to-end by Claude Fable 5 through this server's MCP tools — drawing, checking its own work with scaled `export_frame` previews and `render_onion_skin`, then exporting. The tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvmiranda921.github.io/notebook/2025/07/20/draw-me-a-swordsman/) by Lj Miranda, whose findings inspired this server's expanded toolset.
+
+## Pixel Art Skills
+
+Drawing tools alone do not produce good pixel art. A model that can place pixels
+perfectly still produces "AI slop" if it does not know that anti-aliasing belongs
+only at step corners, that shadows must shift hue rather than just darken, that a
+walk cycle bobs on a triangle wave rather than a sine, or that the impact frame of
+an attack has to be held three to five times longer than the wind-up.
+
+So the craft rules ship **with the server**, as ten skill documents, and every
+connecting client is told to read them before it draws.
+
+| Skill | Covers |
+|-------|--------|
+| `pixel-art-pipeline` | The master workflow: nine phases from blank canvas to exported asset, each with a verification gate. Canvas-size table, layer-rig rules, failure→cause→fix table |
+| `pixel-art-fundamentals` | Cluster control, jaggy-free step patterns, where anti-aliasing belongs (and where it becomes blur), banding, orphan pixels, selective outlining, dithering doctrine |
+| `pixel-art-color` | Ramp construction, 15–25° hue shift per step, saturation peaking mid-ramp, value spacing, palette budgets per sprite size, global light/ambient tinting, palette swaps |
+| `pixel-art-shading` | Light direction, the shadow anatomy (highlight → core → occlusion → bounce), pillow shading and its cure, per-material ramp behaviour, rim light |
+| `pixel-art-character-design` | Head-ratio table, the silhouette test, what fits on a face at each head height, the animation-ready layer rig, 4/8-directional sets, pivot slices |
+| `pixel-art-animation` | Frame budgets and millisecond timing tables per state, walk/run key poses, anticipation, squash and stretch, overlap, smear frames, sub-pixel motion, anti-drift discipline |
+| `pixel-art-vfx` | The universal expand-fast/decay-slow curve, hot-core ramps, impact sparks, explosions, fire, smoke, trails, hit flashes, hitstop |
+| `pixel-art-environments` | Seamless tiles, breaking repetition, 47-tile blob autotiles, ¾ top-down rules, parallax layering, props, 9-slice UI, pixel-perfect text |
+| `aseprite-mcp-playbook` | Every technique mapped to the exact tool call, plus the coordinate/cel/layer gotchas that fail silently, batching for performance, and the Lua escape-hatch contract |
+| `pixel-art-review` | How to critique work you cannot see: the inspection procedure, a 20-point rubric, and a symptom→cause table that maps "it looks bad" to the actual defect |
+| `pixel-art-prompting` | The six decisions a request must pin down, worked weak→strong example prompts for characters and for objects/icons, the vocabulary that steers the result, anti-patterns, and revision phrases |
+
+They are written for a model, not a human reader: concrete numbers (frames,
+milliseconds, pixels, degrees of hue rotation), decision tables, and a checklist
+at the end of every document.
+
+### How every client gets them
+
+One set of Markdown files, six delivery surfaces, no duplicated content.
+
+| Surface | What it is | Who uses it |
+|---------|-----------|-------------|
+| **MCP `instructions`** | The server tells every connecting client, at handshake, to load the skills before drawing | **All MCP clients, automatically** |
+| **MCP tools** | `list_pixelart_skills()` → index, `get_pixelart_skill(name)` → full document | All MCP clients |
+| **MCP resources** | `skill://pixelart/index`, `skill://pixelart/{name}` | Clients that let a user attach context explicitly |
+| **MCP prompts** | `pixel_art_task(subject, size, animated)`, plus `pixel_art_character(...)` and `pixel_art_object(...)` — ready-made briefs that fill every Phase 0 slot, with the skills pre-loaded | Clients with a prompt picker |
+| **Claude Code skills** | `.claude/skills/<name>/SKILL.md` thin wrappers | Claude Code, in this repo |
+| **`AGENTS.md` / `CLAUDE.md`** | Repository-level agent instructions | Any coding agent working in the repo |
+
+The first row is the important one: because the server sets FastMCP's
+`instructions`, Cursor, Devin, VS Code and Claude Code all receive the "read the
+skills first" directive without any per-client configuration. There is nothing to
+install and nothing to paste into a system prompt.
+
+```
+list_pixelart_skills()
+  → | pixel-art-pipeline | Always. Read this first, before any other skill… |
+    | pixel-art-color    | In Phase 2, before any color is placed…          |
+    …
+
+get_pixelart_skill("pixel-art-color")     # bare topics resolve too: "color"
+  → the full document
+```
+
+### A taste of what is inside
+
+`pixel-art-animation`, on timing — the reason most generated animation feels
+lifeless:
+
+| Motion | ms per frame |
+|---|---|
+| Idle breathing | 150–250 |
+| Walk | 100–150 |
+| Attack strike frame | **30–60** — the fastest frame in the sprite |
+| Attack impact hold | **150–300** — hold it 3–5× longer than anything else |
+
+`pixel-art-color`, on ramps — hue rotates while saturation peaks mid-ramp, and
+never at maximum brightness:
+
+```
+Value:      dark  ->  mid  ->  light
+Brightness:  25     50    70    85    95     (rising, larger steps at the ends)
+Saturation:  45     70    80    60    30     (peaks mid, falls off both sides)
+Hue:        330    345     0    15    35     (rotating cool -> warm)
+```
+
+`aseprite-mcp-playbook`, on the conventions that silently break drawings:
+coordinates are sprite-global, frames are 1-based, rectangles are
+corner-inclusive, `draw_line_at` is Bresenham and will not give you pixel-art
+step patterns, and **every tool returns a status string rather than throwing** —
+so an unread return value is an unnoticed failure.
+
+### Authoring your own skills
+
+The documents live in `aseprite_mcp/skills/` and are the single source of truth.
+Each opens with a small frontmatter block:
+
+```markdown
+---
+name: my-studio-style
+title: Studio Style Guide
+description: One line, shown in the index.
+when_to_use: One line, tells the model when to open this.
+tools: draw_pixels_at, set_palette
+see_also: pixel-art-color
+---
+
+The body, in Markdown.
+```
+
+Drop a new `.md` in that directory and it is picked up automatically — the tools,
+the resources and the index all read the same folder. Then regenerate the Claude
+Code wrappers:
+
+```bash
+python3 scripts/sync-claude-skills.py
+```
+
+This is the intended extension point for a studio style guide, a project's
+palette conventions, or a specific game's asset spec.
 
 ## Tool Categories
 
@@ -47,6 +166,7 @@ Both were created end-to-end by Claude Fable 5 through this server's MCP tools �
 | [Scene](#scene) | 1 | Copy layers between sprite files |
 | [Preview & Guide](#preview--guide) | 3 | Local HTTP preview server, workflow guide |
 | [Scripting](#scripting) | 1 | Raw Lua escape hatch for anything not covered above |
+| [Pixel Art Skills](#pixel-art-skills) | 2 | Craft knowledge the model reads before drawing |
 
 ### Canvas
 
@@ -280,14 +400,29 @@ Batch-mode equivalents of what a human artist gets from the Aseprite UI.
 |------|-------------|
 | `run_lua_script` | Execute arbitrary Aseprite Lua ([API docs](https://www.aseprite.org/api/)) in batch mode. The escape hatch when no dedicated tool fits: one script can batch many operations into a single Aseprite launch. Remember to `spr:saveAs(spr.filename)` and `print()` your results. ⚠️ Runs unrestricted code on the host — only pass scripts you trust. |
 
+### Pixel Art Skills
+
+The craft knowledge, readable by any MCP client. See [Pixel Art Skills](#pixel-art-skills) above.
+
+| Tool | Description |
+|------|-------------|
+| `list_pixelart_skills` | Index of the bundled skills and when to use each |
+| `get_pixelart_skill` | Read one skill in full |
+
 ## Recommended Workflow for LLMs
 
-1. **Plan the palette first**: `generate_color_ramp` for each material (skin, armor, blade), or `apply_palette_preset` for a retro look.
-2. **Build in layers**: background / body / equipment / effects, so parts can be animated and edited independently.
-3. **Draw coarse to fine**: silhouette with `draw_rectangle_at` / `draw_ellipse_at` / `fill_area_at`, then refine with `draw_pixels_at`.
-4. **Look at your work**: `export_frame` at 8×, inspect, fix, repeat. Use `get_color_stats` to keep the palette tight.
-5. **Shade with intent**: `adjust_hsl` for shadow layers, `apply_dither_gradient` for blends, `outline_cel` for readability.
-6. **Animate with the cel tools**: `propagate_cels`, then `tween_cel_positions_eased` / `oscillate_cel_positions`; verify with `render_onion_skin` and `compare_frames`; export with `export_tag`.
+The short version. The authoritative one, with the verification gates and the
+failure table, is the `pixel-art-pipeline` skill — read that instead.
+
+1. **Spec before drawing**: canvas size, view angle, light direction, palette budget, and the list of animations. The animation list dictates the layer split, so it has to come first.
+2. **Plan the palette**: `generate_color_ramp` for each material (skin, armor, blade), or `apply_palette_preset` for a retro look. Load it with `set_palette` before the first pixel.
+3. **Build in layers**: background / body / equipment / effects, so parts can be animated and edited independently. Layers are the animation rig, not organisation.
+4. **Silhouette first**: block the whole shape in one flat color and check it reads at 1×. If it does not, no amount of shading rescues it.
+5. **Draw coarse to fine**: masses with `draw_rectangle_at` / `draw_ellipse_at` / `fill_area_at`, then refine with `draw_pixels_at`.
+6. **Shade with intent**: one light direction, `adjust_hsl` for shadow layers, `apply_dither_gradient` for blends, `outline_cel` for readability — then the occlusion pass where forms meet.
+7. **Look at your work**: `export_frame` at 8×, inspect, fix, repeat. Use `get_color_stats` to keep the palette tight and `get_composite_rect` to read back what you actually drew.
+8. **Animate with the cel tools**: `propagate_cels`, then `tween_cel_positions_eased` / `oscillate_cel_positions` — move cels, never redraw frames. Verify with `render_onion_skin`, `compare_frames` and `audit_animation`.
+9. **Export for the engine**: `export_spritesheet` with its JSON, not the GIF.
 
 ## Docker Usage
 
