@@ -485,3 +485,31 @@ If installed, the binary will be at `/opt/steamapps/common/Aseprite/aseprite` an
   }
 }
 ```
+
+### OpenCode
+
+The repo already ships an [`opencode.json`](opencode.json), so cloning it is enough —
+open the folder with `opencode` and the `aseprite` server is registered:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "aseprite": {
+      "type": "local",
+      "command": ["uv", "run", "-m", "aseprite_mcp"],
+      "cwd": ".",
+      "enabled": true,
+      "timeout": 30000
+    }
+  }
+}
+```
+
+Requirements: `uv` on your `PATH`, and Aseprite either on your `PATH` or set via
+`ASEPRITE_PATH` in a `.env` at the repo root (copy `.env.example`). Restart
+OpenCode after cloning — MCP servers are only loaded at startup.
+
+To use it from *other* projects, copy the `aseprite` block into
+`~/.config/opencode/opencode.json` and replace `"cwd": "."` with the absolute
+path to this repo.
